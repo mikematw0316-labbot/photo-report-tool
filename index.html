@@ -3,456 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>鑑定報告書現況照片整理工具</title>
-<script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<title>現況照片整理系統</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:"Microsoft JhengHei","微軟正黑體",sans-serif;background:#f0f2f5;min-height:100vh;padding:24px}
-h1{font-size:1.5rem;font-weight:700;color:#1a1a2e;margin-bottom:4px}
-.subtitle{color:#666;font-size:.85rem;margin-bottom:24px}
-#upload-area{border:2px dashed #aaa;border-radius:12px;padding:48px 24px;text-align:center;background:#fff;cursor:pointer;transition:.2s}
-#upload-area.drag{border-color:#1976d2;background:#e3f2fd}
-#upload-area p{color:#555;font-size:1rem;margin-bottom:12px}
-#file-input{display:none}
-.btn{display:inline-block;padding:10px 24px;border-radius:8px;border:none;cursor:pointer;font-size:.95rem;font-family:inherit;transition:.15s}
-.btn-primary{background:#1976d2;color:#fff}
-.btn-primary:hover{background:#1565c0}
-.btn-success{background:#388e3c;color:#fff;font-size:1rem;padding:12px 32px;margin-top:16px}
-.btn-success:hover{background:#2e7d32}
-.btn-success:disabled{background:#aaa;cursor:not-allowed}
-#status{margin-top:16px;padding:12px 16px;border-radius:8px;display:none;font-size:.9rem}
-#status.info{background:#e3f2fd;color:#1565c0}
-#status.success{background:#e8f5e9;color:#2e7d32}
-#status.error{background:#ffebee;color:#c62828}
-#status.processing{background:#fff8e1;color:#e65100}
-.progress-bar{height:6px;background:#e0e0e0;border-radius:3px;margin-top:8px;overflow:hidden}
-.progress-fill{height:100%;background:#1976d2;border-radius:3px;transition:width .3s}
-#results{margin-top:24px;display:none}
-.summary-card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-.summary-card h2{font-size:1.1rem;margin-bottom:12px;color:#333}
-.stats{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-.stat{background:#f5f5f5;border-radius:8px;padding:10px 16px;text-align:center}
-.stat-num{font-size:1.6rem;font-weight:700;color:#1976d2}
-.stat-label{font-size:.75rem;color:#666;margin-top:2px}
-table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:12px}
-th{background:#f5f5f5;padding:8px 10px;text-align:left;color:#555;font-weight:600;border-bottom:2px solid #e0e0e0}
-td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:top}
-.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
-.tag-ok{background:#e8f5e9;color:#2e7d32}
-.tag-warn{background:#fff8e1;color:#e65100}
-.tag-err{background:#ffebee;color:#c62828}
+body{font-family:"Microsoft JhengHei",sans-serif;background:#f0f2f5;min-height:100vh;padding:32px 24px}
+.hero{text-align:center;margin-bottom:40px}
+.hero h1{font-size:1.8rem;font-weight:700;color:#1a1a2e;margin-bottom:8px}
+.hero p{color:#666;font-size:.95rem}
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:800px;margin:0 auto}
+@media(max-width:600px){.tools{grid-template-columns:1fr}}
+.tool-card{background:#fff;border-radius:16px;padding:32px 24px;box-shadow:0 4px 16px rgba(0,0,0,.08);text-align:center;cursor:pointer;transition:.2s;text-decoration:none;color:inherit;display:block}
+.tool-card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.tool-icon{font-size:3rem;margin-bottom:16px}
+.tool-num{display:inline-block;background:#e3f2fd;color:#1565c0;font-weight:700;font-size:.8rem;padding:3px 10px;border-radius:12px;margin-bottom:12px}
+.tool-card h2{font-size:1.15rem;font-weight:700;color:#222;margin-bottom:8px}
+.tool-card p{font-size:.85rem;color:#666;line-height:1.6}
+.arrow{color:#1976d2;font-size:1.5rem;margin-top:20px}
+.flow{text-align:center;margin:32px auto 0;max-width:800px;color:#888;font-size:.85rem}
+.flow-row{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
+.flow-step{background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:8px 16px;font-size:.82rem;color:#444}
+.flow-arrow{color:#aaa;font-size:1.2rem}
 </style>
 </head>
 <body>
-<h1>🏗 鑑定報告書現況照片整理工具</h1>
-<p class="subtitle">上傳照片 → 依檔名地址分類 → 自動產出 Word + ZIP 下載</p>
-
-<div id="upload-area" onclick="document.getElementById('file-input').click()">
-  <p>📁 拖曳照片至此，或點擊選取</p>
-  <p style="font-size:.8rem;color:#999">支援 JPG / PNG / HEIC，可一次上傳多張</p>
-  <input type="file" id="file-input" multiple accept="image/*,.heic,.HEIC">
+<div class="hero">
+  <h1>🏗 現況照片整理系統</h1>
+  <p>鑑定報告書照片自動識別分類與 Word 報告產出</p>
 </div>
 
-<div id="status"></div>
+<div class="tools">
+  <a class="tool-card" href="classify.html">
+    <div class="tool-icon">🔍</div>
+    <div class="tool-num">工具 1</div>
+    <h2>照片識別分類</h2>
+    <p>上傳多張現況照片<br>OCR 自動辨識圖片內地址文字<br>依縣市/路段/門牌分類整理<br>輸出分類資料夾 ZIP</p>
+    <div class="arrow">→</div>
+  </a>
 
-<div id="results">
-  <div class="summary-card">
-    <h2>📊 分類結果</h2>
-    <div class="stats" id="stats"></div>
-    <table id="result-table">
-      <thead>
-        <tr><th>第一層（路段）</th><th>第二層（門牌）</th><th>照片數</th><th>狀態</th><th>說明</th></tr>
-      </thead>
-      <tbody id="result-body"></tbody>
-    </table>
-    <div style="text-align:center">
-      <button class="btn btn-success" id="download-btn" disabled>⬇ 產出 ZIP（分類資料夾 + Word 檔）</button>
-    </div>
+  <a class="tool-card" href="report.html">
+    <div class="tool-icon">📄</div>
+    <div class="tool-num">工具 2</div>
+    <h2>Word 鑑定報告產出</h2>
+    <p>上傳已分類的地址照片<br>自動產出紅框表格格式 Word<br>照片高度 9cm、每頁 2 張<br>新北市工程顧問公會標準格式</p>
+    <div class="arrow">→</div>
+  </a>
+</div>
+
+<div class="flow">
+  <div style="margin-bottom:12px;font-size:.8rem;color:#aaa">建議流程</div>
+  <div class="flow-row">
+    <div class="flow-step">📷 上傳現況照片</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">🔍 工具1 識別分類</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">💾 下載整理好的照片</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">📄 工具2 產出 Word</div>
   </div>
 </div>
-
-<script>
-// ── 常數 ────────────────────────────────────────────────────────────
-const TITLE = "新北市工程技術顧問商業同業公會\u3000鑑定報告書現況照片";
-const FONT  = "標楷體";
-const FONT_SIZE = 36; // half-points = 18pt
-const BLUE  = "4472C4";
-const RED_BORDER_COLOR = "FF0000";
-const BLUE_LABEL = "0070C0";
-
-// A4 narrow margins (twips)
-const MARGIN = 720;
-const PAGE_W = 11906;
-const COL1_W = 1500;  // 編號
-const COL3_W = 2000;  // 備注
-const COL2_W = PAGE_W - 2 * MARGIN - COL1_W - COL3_W; // ~6466
-
-// Photo max dimensions (cm → pt at 72dpi)
-const MAX_H_PT = Math.round(9 / 2.54 * 72);   // 9cm
-const MAX_W_PT = Math.round((COL2_W / 567 - 0.3) / 2.54 * 72); // col2 width in cm → pt
-
-// ── 工具函式 ─────────────────────────────────────────────────────────
-const { Document, Table, TableRow, TableCell, Paragraph, TextRun, ImageRun,
-        AlignmentType, BorderStyle, WidthType, VerticalAlign, VerticalMerge,
-        PageBreak, Packer, convertMillimetersToTwip } = docx;
-
-function setStatus(msg, type = "info") {
-  const el = document.getElementById("status");
-  el.style.display = "block";
-  el.className = type;
-  el.innerHTML = msg;
-}
-
-function makeRedBorder() {
-  const b = { style: BorderStyle.SINGLE, size: 8, color: RED_BORDER_COLOR };
-  return { top: b, bottom: b, left: b, right: b };
-}
-
-function txt(text, opts = {}) {
-  return new TextRun({ text, font: FONT, size: FONT_SIZE, ...opts });
-}
-
-function para(children, alignment = AlignmentType.LEFT) {
-  const arr = Array.isArray(children) ? children : [children];
-  return new Paragraph({ children: arr, alignment });
-}
-
-// ── 地址解析 ─────────────────────────────────────────────────────────
-const COUNTY_RE = "((?:台|臺)北市|新北市|桃園市|台中市|臺中市|台南市|臺南市|高雄市|基隆市|新竹市|嘉義市|新竹縣|苗栗縣|彰化縣|南投縣|雲林縣|嘉義縣|屏東縣|宜蘭縣|花蓮縣|台東縣|臺東縣|澎湖縣|金門縣|連江縣)";
-const DIST_RE   = "([^\\d\\s_\\-\\.\\(\\)，,、/\\\\]+?(?:鄉|鎮|市|區))";
-const ROAD_RE   = "([^\\d\\s_\\-\\.\\(\\)，,、/\\\\]+?(?:路|街|大道|道)(?:\\d+段)?)";
-
-const LEVEL1_RE = new RegExp(COUNTY_RE + DIST_RE + ROAD_RE);
-
-function parseAddressFromFilename(filename) {
-  const name = filename.replace(/\.[^.]+$/, "").replace(/_/g, "");
-
-  const m1 = name.match(LEVEL1_RE);
-  if (!m1) {
-    // check if file has any number pattern that looks like an address
-    return { level1: null, level2: null, status: "no_address" };
-  }
-
-  const level1 = m1[1] + m1[2] + m1[3];
-  const afterRoad = name.slice(name.indexOf(m1[3]) + m1[3].length);
-
-  // Match compound house numbers: 116之3、116之5 or 116-1
-  const houseMatch = afterRoad.match(
-    /^(?:[\d一二三四五六七八九十]+巷)?(?:[\d一二三四五六七八九十]+弄)?(\d+(?:之\d+)?(?:[、，,]\d+(?:之\d+)?)*)/
-  );
-
-  if (!houseMatch) {
-    return { level1, level2: null, status: "incomplete" };
-  }
-
-  const level2 = houseMatch[1];
-  const isCompound = /[、，,]/.test(level2);
-
-  return { level1, level2, status: isCompound ? "compound" : "ok" };
-}
-
-function extractPhotoNum(filename) {
-  const m = filename.match(/照片\s*0*(\d+)/i);
-  return m ? parseInt(m[1], 10) : null;
-}
-
-// ── 圖片尺寸 ─────────────────────────────────────────────────────────
-function getImgDims(arrayBuffer, type) {
-  return new Promise(resolve => {
-    const blob = new Blob([arrayBuffer], { type });
-    const url  = URL.createObjectURL(blob);
-    const img  = new Image();
-    img.onload = () => { resolve({ w: img.naturalWidth, h: img.naturalHeight }); URL.revokeObjectURL(url); };
-    img.onerror = () => { resolve({ w: 800, h: 600 }); URL.revokeObjectURL(url); };
-    img.src = url;
-  });
-}
-
-function calcSize(natW, natH) {
-  let h = MAX_H_PT, w = h * (natW / natH);
-  if (w > MAX_W_PT) { w = MAX_W_PT; h = w * (natH / natW); }
-  return { width: Math.round(w), height: Math.round(h) };
-}
-
-// ── Word 產生 ────────────────────────────────────────────────────────
-function makePhotoBlock(photoNumStr, imgBuffer, imgSize) {
-  const border = makeRedBorder();
-
-  // Row 1
-  const row1 = new TableRow({ children: [
-    new TableCell({
-      width: { size: COL1_W, type: WidthType.DXA }, borders: border,
-      children: [para(txt("編號"), AlignmentType.CENTER)],
-    }),
-    new TableCell({
-      width: { size: COL2_W, type: WidthType.DXA }, borders: border,
-      verticalMerge: VerticalMerge.RESTART, verticalAlign: VerticalAlign.CENTER,
-      children: [
-        para(txt("說明"), AlignmentType.CENTER),
-        new Paragraph({
-          children: [new ImageRun({ data: imgBuffer, transformation: imgSize })],
-          alignment: AlignmentType.CENTER,
-        }),
-      ],
-    }),
-    new TableCell({
-      width: { size: COL3_W, type: WidthType.DXA }, borders: border,
-      children: [para(txt("A", { color: BLUE_LABEL }), AlignmentType.CENTER)],
-    }),
-  ]});
-
-  // Row 2
-  const row2 = new TableRow({ children: [
-    new TableCell({
-      width: { size: COL1_W, type: WidthType.DXA }, borders: border,
-      verticalMerge: VerticalMerge.RESTART, verticalAlign: VerticalAlign.CENTER,
-      children: [para(txt(photoNumStr, { color: BLUE_LABEL }), AlignmentType.CENTER)],
-    }),
-    new TableCell({
-      width: { size: COL2_W, type: WidthType.DXA }, borders: border,
-      verticalMerge: VerticalMerge.CONTINUE,
-      children: [para("")],
-    }),
-    new TableCell({
-      width: { size: COL3_W, type: WidthType.DXA }, borders: border,
-      children: [para(txt("詳建物現況調查紀錄表"), AlignmentType.LEFT)],
-    }),
-  ]});
-
-  // Row 3
-  const row3 = new TableRow({ children: [
-    new TableCell({
-      width: { size: COL1_W, type: WidthType.DXA }, borders: border,
-      verticalMerge: VerticalMerge.CONTINUE,
-      children: [para("")],
-    }),
-    new TableCell({
-      width: { size: COL2_W, type: WidthType.DXA }, borders: border,
-      verticalMerge: VerticalMerge.CONTINUE,
-      children: [para("")],
-    }),
-    new TableCell({
-      width: { size: COL3_W, type: WidthType.DXA }, borders: border,
-      children: [para("")],
-    }),
-  ]});
-
-  return new Table({
-    width: { size: PAGE_W - 2 * MARGIN, type: WidthType.DXA },
-    rows: [row1, row2, row3],
-  });
-}
-
-async function generateDoc(photos) {
-  const children = [
-    para(txt(TITLE), AlignmentType.CENTER),
-    para(""),
-  ];
-
-  for (let i = 0; i < photos.length; i++) {
-    const p = photos[i];
-    const dims  = await getImgDims(p.buffer, p.type);
-    const size  = calcSize(dims.w, dims.h);
-    const numStr = "照片" + String(p.photoNum).padStart(2, "0");
-    const block = makePhotoBlock(numStr, p.buffer, size);
-    children.push(block);
-
-    if (i < photos.length - 1) {
-      if ((i + 1) % 2 === 0) {
-        // New page after every 2 photos
-        children.push(new Paragraph({ children: [new PageBreak()] }));
-      } else {
-        children.push(para(""));
-      }
-    }
-  }
-
-  const doc = new Document({
-    sections: [{
-      properties: {
-        page: { margin: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN } }
-      },
-      children,
-    }]
-  });
-
-  return Packer.toBlob(doc);
-}
-
-// ── 主邏輯 ───────────────────────────────────────────────────────────
-let globalFiles  = [];
-let classifyData = {};
-
-function classifyFiles(files) {
-  const groups = {};
-  let total = 0;
-
-  for (const file of files) {
-    total++;
-    const { level1, level2, status } = parseAddressFromFilename(file.name);
-    const photoNum = extractPhotoNum(file.name);
-
-    let key, cat;
-    if (status === "no_address") {
-      key = "待確認/地址無法辨識";
-      cat = "no_address";
-    } else if (status === "incomplete") {
-      key = "待確認/地址不完整";
-      cat = "incomplete";
-    } else if (status === "compound") {
-      key = "待確認/複合地址待確認";
-      cat = "compound";
-    } else {
-      key = `${level1}|${level2}`;
-      cat = "ok";
-    }
-
-    if (!groups[key]) groups[key] = { level1, level2, cat, files: [] };
-    groups[key].files.push({ file, photoNum: photoNum || 999 });
-  }
-
-  // Sort files within each group
-  for (const g of Object.values(groups)) {
-    g.files.sort((a, b) => a.photoNum - b.photoNum);
-    // Renumber
-    g.files.forEach((f, i) => { f.seqNum = i + 1; });
-  }
-
-  return { groups, total };
-}
-
-function renderResults(groups, total) {
-  const ok   = Object.values(groups).filter(g => g.cat === "ok").reduce((s, g) => s + g.files.length, 0);
-  const pend = total - ok;
-
-  document.getElementById("stats").innerHTML = `
-    <div class="stat"><div class="stat-num">${total}</div><div class="stat-label">總照片數</div></div>
-    <div class="stat"><div class="stat-num">${ok}</div><div class="stat-label">成功分類</div></div>
-    <div class="stat"><div class="stat-num">${pend}</div><div class="stat-label">待確認</div></div>
-    <div class="stat"><div class="stat-num">${Object.values(groups).filter(g=>g.cat==="ok").length}</div><div class="stat-label">地址數</div></div>
-  `;
-
-  const tbody = document.getElementById("result-body");
-  tbody.innerHTML = "";
-
-  for (const [key, g] of Object.entries(groups)) {
-    const tagMap = { ok: "tag-ok", no_address: "tag-err", incomplete: "tag-warn", compound: "tag-warn" };
-    const labelMap = { ok: "分類成功", no_address: "無法辨識", incomplete: "地址不完整", compound: "複合待確認" };
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${g.level1 || "—"}</td>
-      <td>${g.level2 || "—"}</td>
-      <td>${g.files.length}</td>
-      <td><span class="tag ${tagMap[g.cat]}">${labelMap[g.cat]}</span></td>
-      <td style="font-size:.8rem;color:#999">${g.files.map(f=>f.file.name).join(", ")}</td>
-    `;
-    tbody.appendChild(tr);
-  }
-
-  document.getElementById("results").style.display = "block";
-  document.getElementById("download-btn").disabled = false;
-}
-
-async function buildZip(groups) {
-  const zip = new JSZip();
-
-  const okGroups = Object.entries(groups).filter(([, g]) => g.cat === "ok");
-  let processed = 0;
-
-  setStatus(`<div>正在產出 Word 與 ZIP，請稍候...</div><div class="progress-bar"><div class="progress-fill" id="pf" style="width:0%"></div></div>`, "processing");
-
-  for (const [, g] of okGroups) {
-    const folderL1 = zip.folder(g.level1);
-    const folderL2 = folderL1.folder(g.level2);
-
-    // Add renamed photos
-    for (const f of g.files) {
-      const ext   = f.file.name.split(".").pop();
-      const newName = `照片${String(f.seqNum).padStart(2,"0")}_${f.file.name}`;
-      const buf   = await f.file.arrayBuffer();
-      folderL2.file(newName, buf);
-    }
-
-    // Generate Word
-    const photos = await Promise.all(g.files.map(async f => ({
-      buffer: await f.file.arrayBuffer(),
-      type:   f.file.type || "image/jpeg",
-      photoNum: f.seqNum,
-    })));
-
-    try {
-      const docBlob = await generateDoc(photos);
-      const docName = `${g.level2}_貼照片.docx`;
-      folderL2.file(docName, await docBlob.arrayBuffer());
-    } catch(e) {
-      console.error("Word gen error:", e);
-    }
-
-    processed++;
-    document.getElementById("pf").style.width = `${Math.round(processed / okGroups.length * 100)}%`;
-  }
-
-  // Pending folders
-  const pendingGroups = Object.entries(groups).filter(([,g]) => g.cat !== "ok");
-  for (const [key, g] of pendingGroups) {
-    const folder = zip.folder(key);
-    for (const f of g.files) {
-      const buf = await f.file.arrayBuffer();
-      folder.file(f.file.name, buf);
-    }
-  }
-
-  return zip;
-}
-
-// ── 事件綁定 ─────────────────────────────────────────────────────────
-const uploadArea = document.getElementById("upload-area");
-const fileInput  = document.getElementById("file-input");
-
-uploadArea.addEventListener("dragover", e => { e.preventDefault(); uploadArea.classList.add("drag"); });
-uploadArea.addEventListener("dragleave", () => uploadArea.classList.remove("drag"));
-uploadArea.addEventListener("drop", e => {
-  e.preventDefault();
-  uploadArea.classList.remove("drag");
-  handleFiles([...e.dataTransfer.files]);
-});
-
-fileInput.addEventListener("change", e => handleFiles([...e.target.files]));
-
-function handleFiles(files) {
-  const imgs = files.filter(f => /image/i.test(f.type) || /\.(jpg|jpeg|png|gif|heic|webp)$/i.test(f.name));
-  if (!imgs.length) { setStatus("⚠️ 沒有偵測到圖片檔案", "error"); return; }
-
-  setStatus(`偵測到 ${imgs.length} 張照片，正在分類...`, "info");
-
-  globalFiles = imgs;
-  const { groups, total } = classifyFiles(imgs);
-  classifyData = groups;
-
-  renderResults(groups, total);
-  setStatus(`✅ 分類完成：${total} 張照片，${Object.values(groups).filter(g=>g.cat==="ok").length} 個地址，${total - Object.values(groups).filter(g=>g.cat==="ok").reduce((s,g)=>s+g.files.length,0)} 張待確認`, "success");
-}
-
-document.getElementById("download-btn").addEventListener("click", async () => {
-  const btn = document.getElementById("download-btn");
-  btn.disabled = true;
-  btn.textContent = "產出中...";
-
-  try {
-    const zip  = await buildZip(classifyData);
-    const blob = await zip.generateAsync({ type: "blob" });
-    saveAs(blob, "鑑定報告照片整理結果.zip");
-    setStatus("✅ ZIP 已下載完成！", "success");
-  } catch(e) {
-    console.error(e);
-    setStatus("❌ 產出失敗：" + e.message, "error");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "⬇ 產出 ZIP（分類資料夾 + Word 檔）";
-  }
-});
-</script>
 </body>
 </html>

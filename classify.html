@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工具1：照片識別分類</title>
+<script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Microsoft JhengHei",sans-serif;background:#f0f2f5;min-height:100vh;padding:24px}
+.back{color:#1976d2;font-size:.85rem;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-bottom:16px}
+h1{font-size:1.4rem;font-weight:700;color:#1a1a2e;margin-bottom:4px}
+.subtitle{color:#666;font-size:.85rem;margin-bottom:24px}
+#upload-area{border:2px dashed #aaa;border-radius:12px;padding:48px 24px;text-align:center;background:#fff;cursor:pointer;transition:.2s;max-width:680px}
+#upload-area.drag{border-color:#1976d2;background:#e3f2fd}
+#upload-area p{color:#555;font-size:1rem;margin-bottom:8px}
+#file-input{display:none}
+.status-box{padding:12px 16px;border-radius:8px;font-size:.9rem;margin:12px 0;max-width:680px}
+.info{background:#e3f2fd;color:#1565c0}
+.success{background:#e8f5e9;color:#2e7d32}
+.error{background:#ffebee;color:#c62828}
+.processing{background:#fff8e1;color:#e65100}
+.progress-bar{height:6px;background:#e0e0e0;border-radius:3px;margin-top:8px;overflow:hidden}
+.progress-fill{height:100%;background:#1976d2;border-radius:3px;transition:width .3s}
+#ocr-log{font-size:.78rem;color:#777;margin-top:6px;background:#fafafa;border-radius:4px;padding:6px 10px}
+#results{margin-top:24px;display:none;max-width:900px}
+.card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px}
+.card h2{font-size:1rem;margin-bottom:12px;color:#333}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.stat{background:#f5f5f5;border-radius:8px;padding:8px 16px;text-align:center}
+.stat-num{font-size:1.5rem;font-weight:700;color:#1976d2}
+.stat-label{font-size:.72rem;color:#666;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{background:#f5f5f5;padding:8px 10px;text-align:left;color:#555;font-weight:600;border-bottom:2px solid #e0e0e0}
+td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:top;word-break:break-all}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600}
+.tag-ok{background:#e8f5e9;color:#2e7d32}
+.tag-warn{background:#fff8e1;color:#e65100}
+.tag-err{background:#ffebee;color:#c62828}
+.ocr-snip{font-size:.72rem;color:#aaa;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn-dl{display:inline-block;padding:12px 32px;border-radius:8px;background:#1976d2;color:#fff;border:none;cursor:pointer;font-size:1rem;font-family:inherit;margin-top:4px}
+.btn-dl:hover{background:#1565c0}
+.btn-dl:disabled{background:#aaa;cursor:not-allowed}
+.hint{font-size:.78rem;color:#888;margin-top:8px}
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← 返回首頁</a>
+<h1>🔍 工具1：照片識別分類</h1>
+<p class="subtitle">上傳現況照片 → OCR 辨識圖片內地址 → 依縣市/路段/門牌分類 → 下載整理好的 ZIP</p>
+
+<div id="upload-area" onclick="document.getElementById('file-input').click()">
+  <p>📁 拖曳照片至此，或點擊選取</p>
+  <p style="font-size:.8rem;color:#999">支援 JPG / PNG，可一次上傳多張｜OCR 每張約 5-15 秒</p>
+  <input type="file" id="file-input" multiple accept="image/*">
+</div>
+
+<div id="status-wrap"></div>
+
+<div id="results">
+  <div class="card">
+    <h2>📊 分類結果</h2>
+    <div class="stats" id="stats"></div>
+    <table>
+      <thead><tr>
+        <th>第一層（縣市+區+路）</th>
+        <th>第二層（門牌號碼）</th>
+        <th>照片數</th>
+        <th>狀態</th>
+        <th>OCR 辨識摘要</th>
+      </tr></thead>
+      <tbody id="result-body"></tbody>
+    </table>
+  </div>
+  <div style="text-align:center">
+    <button class="btn-dl" id="dl-btn" disabled>⬇ 下載分類整理 ZIP</button>
+    <p class="hint">ZIP 內含依地址整理的資料夾與重新命名的照片（照片01_...）<br>下載後可直接丟入「工具2」產出 Word 鑑定報告</p>
+  </div>
+</div>
+
+<script>
+// ── 地址解析 ─────────────────────────────────────────────────────────
+const COUNTY_RE = "((?:台|臺)北市|新北市|桃園市|台中市|臺中市|台南市|臺南市|高雄市|基隆市|新竹市|嘉義市|新竹縣|苗栗縣|彰化縣|南投縣|雲林縣|嘉義縣|屏東縣|宜蘭縣|花蓮縣|台東縣|臺東縣|澎湖縣|金門縣|連江縣)";
+const DIST_RE   = "([^\\d\\s_\\-，,、/\\\\()（）]+?(?:鄉|鎮|市|區))";
+const ROAD_RE   = "([^\\d\\s_\\-，,、/\\\\()（）]+?(?:路|街|大道|道)(?:\\d+段)?)";
+const LEVEL1_RE = new RegExp(COUNTY_RE + DIST_RE + ROAD_RE);
+
+function parseAddress(text) {
+  if (!text) return { level1:null, level2:null, status:"no_address" };
+  const flat = text.replace(/[\r\n\s]+/g,"");
+  const m = flat.match(LEVEL1_RE);
+  if (!m) return { level1:null, level2:null, status:"no_address" };
+  const level1 = m[1]+m[2]+m[3];
+  const after  = flat.slice(flat.indexOf(m[3])+m[3].length);
+  const hm     = after.match(/^(?:\d+巷)?(?:\d+弄)?(\d+(?:之\d+)?(?:[、，,]\d+(?:之\d+)?)*)/);
+  if (!hm) return { level1, level2:null, status:"incomplete" };
+  const level2   = hm[1];
+  const compound = /[、，,]/.test(level2);
+  return { level1, level2, status: compound ? "compound" : "ok" };
+}
+
+function photoNum(text, fname) {
+  const m = (text+" "+fname).match(/照片\s*0*(\d+)/);
+  return m ? parseInt(m[1],10) : null;
+}
+
+// ── UI ──────────────────────────────────────────────────────────────
+let groups = {};
+function addSt(msg,type="info"){
+  const w=document.getElementById("status-wrap");
+  const el=document.createElement("div"); el.className=`status-box ${type}`; el.innerHTML=msg; w.appendChild(el); return el;
+}
+function clearSt(){ document.getElementById("status-wrap").innerHTML=""; }
+
+async function processFiles(files) {
+  clearSt();
+  document.getElementById("results").style.display="none";
+  document.getElementById("dl-btn").disabled=true;
+  groups={};
+
+  const imgs=files.filter(f=>/image/i.test(f.type)||/\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
+  if(!imgs.length){ addSt("⚠️ 沒有偵測到圖片","error"); return; }
+
+  const box=addSt(`<div>🔍 OCR 辨識中 (0/${imgs.length})...</div>
+    <div class="progress-bar"><div class="progress-fill" id="pf" style="width:0%"></div></div>
+    <div id="ocr-log"></div>`,"processing");
+
+  const worker=await Tesseract.createWorker("chi_tra",1,{
+    logger:()=>{},
+    workerPath:"https://unpkg.com/tesseract.js@5/dist/worker.min.js",
+    langPath:"https://tessdata.projectnaptha.com/4.0.0_best",
+    corePath:"https://unpkg.com/tesseract.js-core@5/tesseract-core-simd.wasm.js",
+  });
+
+  for(let i=0;i<imgs.length;i++){
+    const f=imgs[i];
+    document.getElementById("ocr-log").textContent=`辨識中：${f.name}`;
+    document.getElementById("pf").style.width=`${Math.round(i/imgs.length*100)}%`;
+
+    let ocrText="";
+    try{ const r=await worker.recognize(f); ocrText=r.data.text; }catch(e){}
+
+    const {level1,level2,status}=parseAddress(ocrText);
+    const pn=photoNum(ocrText,f.name);
+
+    let key;
+    if(status==="no_address") key="待確認/地址無法辨識";
+    else if(status==="incomplete") key="待確認/地址不完整";
+    else if(status==="compound") key="待確認/複合地址待確認";
+    else key=`${level1}|${level2}`;
+
+    if(!groups[key]) groups[key]={level1,level2,cat:status,files:[]};
+    groups[key].files.push({file:f,photoNum:pn||999,ocrText});
+
+    box.querySelector("div").textContent=`🔍 OCR 辨識中 (${i+1}/${imgs.length})...`;
+  }
+
+  await worker.terminate();
+
+  for(const g of Object.values(groups)){
+    g.files.sort((a,b)=>a.photoNum-b.photoNum);
+    g.files.forEach((f,i)=>f.seqNum=i+1);
+  }
+
+  document.getElementById("pf").style.width="100%";
+  box.className="status-box success";
+  box.querySelector("div").textContent=`✅ OCR 完成，共 ${imgs.length} 張`;
+
+  renderResults(groups,imgs.length);
+}
+
+const TAG={ok:"tag-ok",no_address:"tag-err",incomplete:"tag-warn",compound:"tag-warn"};
+const LABEL={ok:"分類成功",no_address:"無法辨識",incomplete:"地址不完整",compound:"複合待確認"};
+
+function renderResults(g,total){
+  const ok=Object.values(g).filter(x=>x.cat==="ok").reduce((s,x)=>s+x.files.length,0);
+  document.getElementById("stats").innerHTML=`
+    <div class="stat"><div class="stat-num">${total}</div><div class="stat-label">總照片數</div></div>
+    <div class="stat"><div class="stat-num">${ok}</div><div class="stat-label">成功分類</div></div>
+    <div class="stat"><div class="stat-num">${total-ok}</div><div class="stat-label">待確認</div></div>
+    <div class="stat"><div class="stat-num">${Object.values(g).filter(x=>x.cat==="ok").length}</div><div class="stat-label">地址數</div></div>`;
+  const tbody=document.getElementById("result-body"); tbody.innerHTML="";
+  for(const[,x] of Object.entries(g)){
+    const snip=(x.files[0]?.ocrText||"").replace(/\s+/g," ").trim().slice(0,50);
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${x.level1||"—"}</td><td>${x.level2||"—"}</td><td>${x.files.length}</td>
+      <td><span class="tag ${TAG[x.cat]||"tag-warn"}">${LABEL[x.cat]||x.cat}</span></td>
+      <td><span class="ocr-snip" title="${snip}">${snip||"—"}</span></td>`;
+    tbody.appendChild(tr);
+  }
+  document.getElementById("results").style.display="block";
+  document.getElementById("dl-btn").disabled=false;
+}
+
+async function buildZip(){
+  const zip=new JSZip();
+  for(const[key,g] of Object.entries(groups)){
+    let folder;
+    if(g.cat==="ok") folder=zip.folder(g.level1).folder(g.level2);
+    else folder=zip.folder(key);
+    for(const f of g.files){
+      const buf=await f.file.arrayBuffer();
+      const name=g.cat==="ok" ? `照片${String(f.seqNum).padStart(2,"0")}_${f.file.name}` : f.file.name;
+      folder.file(name,buf);
+    }
+  }
+  return zip;
+}
+
+// 事件
+const ua=document.getElementById("upload-area");
+const fi=document.getElementById("file-input");
+ua.addEventListener("dragover",e=>{e.preventDefault();ua.classList.add("drag")});
+ua.addEventListener("dragleave",()=>ua.classList.remove("drag"));
+ua.addEventListener("drop",e=>{e.preventDefault();ua.classList.remove("drag");processFiles([...e.dataTransfer.files])});
+fi.addEventListener("change",e=>processFiles([...e.target.files]));
+
+document.getElementById("dl-btn").addEventListener("click",async()=>{
+  const btn=document.getElementById("dl-btn"); btn.disabled=true; btn.textContent="打包中...";
+  try{
+    const zip=await buildZip();
+    const blob=await zip.generateAsync({type:"blob"});
+    saveAs(blob,"照片分類整理.zip");
+  }catch(e){ addSt("❌ 下載失敗："+e.message,"error"); }
+  finally{ btn.disabled=false; btn.textContent="⬇ 下載分類整理 ZIP"; }
+});
+</script>
+</body>
+</html>

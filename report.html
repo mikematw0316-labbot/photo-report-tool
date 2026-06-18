@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工具2：Word 鑑定報告產出</title>
+<script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Microsoft JhengHei",sans-serif;background:#f0f2f5;min-height:100vh;padding:24px}
+.back{color:#1976d2;font-size:.85rem;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-bottom:16px}
+h1{font-size:1.4rem;font-weight:700;color:#1a1a2e;margin-bottom:4px}
+.subtitle{color:#666;font-size:.85rem;margin-bottom:24px}
+.section{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:16px;max-width:680px}
+.section h2{font-size:1rem;font-weight:700;color:#333;margin-bottom:12px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:.85rem;color:#555;margin-bottom:6px;font-weight:600}
+.field input{width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:.9rem;font-family:inherit}
+.field input:focus{outline:none;border-color:#1976d2}
+#upload-area{border:2px dashed #aaa;border-radius:10px;padding:32px 16px;text-align:center;background:#fafafa;cursor:pointer;transition:.2s}
+#upload-area.drag{border-color:#1976d2;background:#e3f2fd}
+#upload-area p{color:#555;font-size:.9rem;margin-bottom:6px}
+#file-input{display:none}
+.file-list{max-height:200px;overflow-y:auto;margin-top:10px;border:1px solid #eee;border-radius:6px}
+.file-item{padding:6px 12px;font-size:.8rem;color:#555;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between}
+.file-item:last-child{border-bottom:none}
+.status-box{padding:12px 16px;border-radius:8px;font-size:.9rem;margin:12px 0}
+.processing{background:#fff8e1;color:#e65100}
+.success{background:#e8f5e9;color:#2e7d32}
+.error{background:#ffebee;color:#c62828}
+.progress-bar{height:6px;background:#e0e0e0;border-radius:3px;margin-top:8px;overflow:hidden}
+.progress-fill{height:100%;background:#388e3c;border-radius:3px;transition:width .3s}
+.btn{display:inline-block;padding:11px 28px;border-radius:8px;border:none;cursor:pointer;font-size:.95rem;font-family:inherit;margin-top:4px}
+.btn-primary{background:#388e3c;color:#fff}
+.btn-primary:hover{background:#2e7d32}
+.btn-primary:disabled{background:#aaa;cursor:not-allowed}
+.note{font-size:.78rem;color:#888;margin-top:8px;line-height:1.5}
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← 返回首頁</a>
+<h1>📄 工具2：Word 鑑定報告產出</h1>
+<p class="subtitle">上傳同一地址的現況照片 → 自動產出紅框表格 Word 鑑定報告</p>
+
+<div class="section">
+  <h2>① 地址資訊</h2>
+  <div class="field">
+    <label>第一層：縣市 + 鄉鎮市區 + 路/街/段</label>
+    <input type="text" id="addr1" placeholder="例：宜蘭縣頭城鎮大里路">
+  </div>
+  <div class="field">
+    <label>第二層：門牌號碼</label>
+    <input type="text" id="addr2" placeholder="例：116之3、116之5">
+  </div>
+</div>
+
+<div class="section">
+  <h2>② 上傳該地址照片（可多張，依序號排列）</h2>
+  <div id="upload-area" onclick="document.getElementById('file-input').click()">
+    <p>📁 拖曳照片至此，或點擊選取</p>
+    <p style="font-size:.78rem;color:#999">建議檔名包含「照片1」「照片2」…以便自動排序</p>
+    <input type="file" id="file-input" multiple accept="image/*">
+  </div>
+  <div id="file-list" class="file-list" style="display:none"></div>
+</div>
+
+<div class="section">
+  <h2>③ 產出 Word</h2>
+  <p class="note">
+    格式：標題〔新北市工程技術顧問商業同業公會　鑑定報告書現況照片〕標楷體 18pt<br>
+    每張照片：紅框3列表格｜編號｜說明｜A（藍字）｜照片高9cm置中<br>
+    每頁2張、不跨頁，每個地址獨立一份 Word
+  </p>
+  <div id="status-wrap"></div>
+  <button class="btn btn-primary" id="gen-btn" disabled>⚙ 產出 Word 並下載</button>
+</div>
+
+<script>
+const TITLE="新北市工程技術顧問商業同業公會\u3000鑑定報告書現況照片";
+const FONT="標楷體"; const FS=36; const BLUE="0070C0";
+const MARGIN=720, PAGE_W=11906, COL1=1500, COL3=2000;
+const COL2=PAGE_W-2*MARGIN-COL1-COL3;
+const MAX_H=Math.round(9/2.54*72);
+const MAX_W=Math.round(((COL2/567)-0.3)/2.54*72);
+
+const {Document,Table,TableRow,TableCell,Paragraph,TextRun,ImageRun,
+       AlignmentType,BorderStyle,WidthType,VerticalAlign,VerticalMerge,PageBreak,Packer}=docx;
+
+let uploadedFiles=[];
+
+// ── 圖片 ─────────────────────────────────────────────────────────────
+function extractNum(name){const m=name.match(/照片\s*0*(\d+)/);return m?parseInt(m[1],10):999;}
+function getImgDims(buf,type){
+  return new Promise(r=>{
+    const b=new Blob([buf],{type}),url=URL.createObjectURL(b),img=new Image();
+    img.onload=()=>{r({w:img.naturalWidth,h:img.naturalHeight});URL.revokeObjectURL(url);};
+    img.onerror=()=>{r({w:800,h:600});URL.revokeObjectURL(url);};
+    img.src=url;
+  });
+}
+function calcSize(w,h){let fh=MAX_H,fw=fh*(w/h);if(fw>MAX_W){fw=MAX_W;fh=fw*(h/w);}return{width:Math.round(fw),height:Math.round(fh)};}
+
+// ── DOCX ─────────────────────────────────────────────────────────────
+function rb(){const b={style:BorderStyle.SINGLE,size:8,color:"FF0000"};return{top:b,bottom:b,left:b,right:b};}
+function t(text,opts={}){return new TextRun({text,font:FONT,size:FS,...opts});}
+function p(ch,align=AlignmentType.LEFT){
+  const arr=typeof ch==="string"?[t(ch)]:(Array.isArray(ch)?ch:[ch]);
+  return new Paragraph({children:arr,alignment:align});
+}
+
+function makeBlock(numStr,imgBuf,imgSize){
+  const brd=rb();
+  const imgP=new Paragraph({children:[new ImageRun({data:imgBuf,transformation:imgSize})],alignment:AlignmentType.CENTER});
+  const cw=(sz,ch,vm,va)=>new TableCell({width:{size:sz,type:WidthType.DXA},borders:brd,...(vm?{verticalMerge:vm}:{}),...(va?{verticalAlign:va}:{}),children:ch});
+  return new Table({
+    width:{size:PAGE_W-2*MARGIN,type:WidthType.DXA},
+    rows:[
+      new TableRow({children:[
+        cw(COL1,[p("編號",AlignmentType.CENTER)]),
+        cw(COL2,[p("說明",AlignmentType.CENTER),imgP],VerticalMerge.RESTART,VerticalAlign.CENTER),
+        cw(COL3,[p([t("A",{color:BLUE})],AlignmentType.CENTER)]),
+      ]}),
+      new TableRow({children:[
+        cw(COL1,[p([t(numStr,{color:BLUE})],AlignmentType.CENTER)],VerticalMerge.RESTART,VerticalAlign.CENTER),
+        cw(COL2,[p("")],VerticalMerge.CONTINUE),
+        cw(COL3,[p("詳建物現況調查紀錄表")]),
+      ]}),
+      new TableRow({children:[
+        cw(COL1,[p("")],VerticalMerge.CONTINUE),
+        cw(COL2,[p("")],VerticalMerge.CONTINUE),
+        cw(COL3,[p("")]),
+      ]}),
+    ],
+  });
+}
+
+async function generateDoc(photos){
+  const children=[p([t(TITLE)],AlignmentType.CENTER),p("")];
+  for(let i=0;i<photos.length;i++){
+    const ph=photos[i];
+    const dims=await getImgDims(ph.buf,ph.type);
+    const size=calcSize(dims.w,dims.h);
+    const ns="照片"+String(ph.num).padStart(2,"0");
+    children.push(makeBlock(ns,ph.buf,size));
+    if(i<photos.length-1)
+      children.push((i+1)%2===0?new Paragraph({children:[new PageBreak()]}):p(""));
+  }
+  const doc=new Document({sections:[{properties:{page:{margin:{top:MARGIN,right:MARGIN,bottom:MARGIN,left:MARGIN}}},children}]});
+  return Packer.toBlob(doc);
+}
+
+// ── UI ──────────────────────────────────────────────────────────────
+function addSt(msg,type="processing"){
+  const w=document.getElementById("status-wrap");
+  w.innerHTML=`<div class="status-box ${type}">${msg}</div>`;
+}
+
+function updateFileList(){
+  const fl=document.getElementById("file-list");
+  if(!uploadedFiles.length){fl.style.display="none";return;}
+  fl.style.display="block";
+  fl.innerHTML=uploadedFiles.map((f,i)=>`<div class="file-item"><span>照片${String(i+1).padStart(2,"0")} — ${f.name}</span><span style="color:#aaa">${(f.size/1024).toFixed(0)}KB</span></div>`).join("");
+  document.getElementById("gen-btn").disabled=false;
+}
+
+const ua=document.getElementById("upload-area");
+const fi=document.getElementById("file-input");
+ua.addEventListener("dragover",e=>{e.preventDefault();ua.classList.add("drag")});
+ua.addEventListener("dragleave",()=>ua.classList.remove("drag"));
+ua.addEventListener("drop",e=>{e.preventDefault();ua.classList.remove("drag");handleFiles([...e.dataTransfer.files])});
+fi.addEventListener("change",e=>handleFiles([...e.target.files]));
+
+function handleFiles(files){
+  const imgs=files.filter(f=>/image/i.test(f.type)||/\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
+  // Sort by embedded photo number
+  imgs.sort((a,b)=>extractNum(a.name)-extractNum(b.name));
+  uploadedFiles=imgs;
+  updateFileList();
+}
+
+document.getElementById("gen-btn").addEventListener("click",async()=>{
+  const addr1=document.getElementById("addr1").value.trim();
+  const addr2=document.getElementById("addr2").value.trim();
+  if(!addr1||!addr2){addSt("⚠️ 請填寫地址資訊","error");return;}
+  if(!uploadedFiles.length){addSt("⚠️ 請先上傳照片","error");return;}
+
+  const btn=document.getElementById("gen-btn"); btn.disabled=true;
+  addSt(`<div>⚙ 產出中 (0/${uploadedFiles.length})...</div><div class="progress-bar"><div class="progress-fill" id="gp" style="width:0%"></div></div>`);
+
+  try{
+    const photos=[];
+    for(let i=0;i<uploadedFiles.length;i++){
+      document.getElementById("gp").style.width=`${Math.round(i/uploadedFiles.length*100)}%`;
+      const f=uploadedFiles[i];
+      photos.push({buf:await f.arrayBuffer(),type:f.type||"image/jpeg",num:i+1});
+    }
+    document.getElementById("gp").style.width="100%";
+    const blob=await generateDoc(photos);
+    saveAs(blob,`${addr2}_貼照片.docx`);
+    addSt(`✅ Word 已下載：${addr2}_貼照片.docx`,"success");
+  }catch(e){
+    addSt("❌ 產出失敗："+e.message,"error");
+    console.error(e);
+  }finally{
+    btn.disabled=false;
+  }
+});
+</script>
+</body>
+</html>

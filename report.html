@@ -102,20 +102,19 @@ function getImgDims(buf,type){
     img.src=url;
   });
 }
+// ── Contain-fit scaling: one scale for both dimensions ───────────────
 function calcSize(w,h){
-  // Always exactly 9cm tall; cap width only if it exceeds table width
-  let fh=IMG_MAX_H,fw=Math.round(fh*w/h);
-  if(fw>IMG_MAX_W){fw=IMG_MAX_W;}
-  return{width:fw,height:fh};
+  const scale=Math.min(IMG_MAX_W/w, IMG_MAX_H/h);
+  return{width:Math.round(w*scale), height:Math.round(h*scale)};
 }
 
 // ── DOCX helpers ─────────────────────────────────────────────────────
-function B(sz){return{style:BorderStyle.SINGLE,size:sz,color:TR};}
-const NIL={style:BorderStyle.NIL,size:0,color:"000000"};
+function RB(sz){return{style:BorderStyle.SINGLE,size:sz,color:TR};}
+const NIL_B={style:BorderStyle.NIL,size:0,color:"000000"};
 function t(text,opts={}){return new TextRun({text,font:FONT,size:FS,...opts});}
-function p(ch,align=AlignmentType.LEFT,keepNext=false){
+function p(ch,align=AlignmentType.LEFT){
   const arr=typeof ch==="string"?[t(ch)]:(Array.isArray(ch)?ch:[ch]);
-  return new Paragraph({children:arr,alignment:align,spacing:{before:0,after:0},...(keepNext?{keepNext:true}:{})});
+  return new Paragraph({children:arr,alignment:align,spacing:{before:0,after:0}});
 }
 function tc(w,children,opts={}){
   const{vMerge,vAlign,borders,columnSpan}=opts;
@@ -129,49 +128,57 @@ function tc(w,children,opts={}){
   });
 }
 
-// ── Photo block rows (4 or 5 rows per photo) ────────────────────────
-function makePhotoRows(numStr,imgBuf,imgSize,isLast,locationText){
-  const rows=[];
-  const col3text=locationText?p(locationText,AlignmentType.LEFT,true):p([t("A",{color:BLUE})],AlignmentType.CENTER,true);
-  // Row A: 編號 | 說明(RESTART) | location or A
-  rows.push(new TableRow({cantSplit:true,children:[
-    tc(COL1,p("編\u3000號",AlignmentType.CENTER,true),{borders:{top:B(18),left:B(18),bottom:B(4),right:B(4)}}),
-    tc(COL2,p("說\u3000\u3000\u3000明",AlignmentType.CENTER,true),{vMerge:VerticalMergeType.RESTART,vAlign:VerticalAlign.CENTER,borders:{top:B(18),left:B(4),bottom:B(4),right:B(4)}}),
-    tc(COL3,col3text,{borders:{top:B(18),left:B(4),bottom:B(4),right:B(18)}}),
-  ]}));
-  // Row B: numStr(RESTART) | CONTINUE | 詳建物
-  rows.push(new TableRow({cantSplit:true,children:[
-    tc(COL1,p([t(numStr,{color:BLUE})],AlignmentType.CENTER,true),{vMerge:VerticalMergeType.RESTART,vAlign:VerticalAlign.CENTER,borders:{top:B(4),left:B(18),bottom:B(4),right:B(4)}}),
-    tc(COL2,p("",AlignmentType.LEFT,true),{vMerge:VerticalMergeType.CONTINUE,borders:{top:B(18),left:B(4),bottom:B(4),right:B(4)}}),
-    tc(COL3,p("詳建物現況調查紀錄表",AlignmentType.LEFT,true),{borders:{top:B(4),left:B(4),bottom:B(4),right:B(18)}}),
-  ]}));
-  // Row C: CONTINUE | CONTINUE | empty
-  rows.push(new TableRow({cantSplit:true,children:[
-    tc(COL1,p("",AlignmentType.LEFT,true),{vMerge:VerticalMergeType.CONTINUE,borders:{top:B(4),left:B(18),bottom:B(4),right:B(4)}}),
-    tc(COL2,p("",AlignmentType.LEFT,true),{vMerge:VerticalMergeType.CONTINUE,borders:{top:B(18),left:B(4),bottom:B(4),right:B(4)}}),
-    tc(COL3,p("",AlignmentType.LEFT,true),{borders:{top:B(4),left:B(4),bottom:B(4),right:B(18)}}),
-  ]}));
-  // Row D: full-width photo (columnSpan=3)
-  rows.push(new TableRow({
-    cantSplit:true,
+// ── Inner photo-block rows (A, B, C, D) ─────────────────────────────
+function makeInnerRows(numStr,imgBuf,size){
+  const blueA=p([t("A",{color:BLUE})],AlignmentType.CENTER);
+  const rowA=new TableRow({children:[
+    tc(COL1,p("編\u3000號",AlignmentType.CENTER),{borders:{top:RB(18),left:RB(18),bottom:RB(4),right:RB(4)}}),
+    tc(COL2,p("說\u3000\u3000\u3000明",AlignmentType.CENTER),{vMerge:VerticalMergeType.RESTART,vAlign:VerticalAlign.CENTER,borders:{top:RB(18),left:RB(4),bottom:RB(4),right:RB(4)}}),
+    tc(COL3,blueA,{borders:{top:RB(18),left:RB(4),bottom:RB(4),right:RB(18)}}),
+  ]});
+  const rowB=new TableRow({children:[
+    tc(COL1,p([t(numStr,{color:BLUE})],AlignmentType.CENTER),{vMerge:VerticalMergeType.RESTART,vAlign:VerticalAlign.CENTER,borders:{top:RB(4),left:RB(18),bottom:RB(4),right:RB(4)}}),
+    tc(COL2,p(""),{vMerge:VerticalMergeType.CONTINUE,borders:{top:RB(18),left:RB(4),bottom:RB(4),right:RB(4)}}),
+    tc(COL3,p("詳建物現況調查紀錄表"),{borders:{top:RB(4),left:RB(4),bottom:RB(4),right:RB(18)}}),
+  ]});
+  const rowC=new TableRow({children:[
+    tc(COL1,p(""),{vMerge:VerticalMergeType.CONTINUE,borders:{top:RB(4),left:RB(18),bottom:RB(4),right:RB(4)}}),
+    tc(COL2,p(""),{vMerge:VerticalMergeType.CONTINUE,borders:{top:RB(18),left:RB(4),bottom:RB(4),right:RB(4)}}),
+    tc(COL3,p(""),{borders:{top:RB(4),left:RB(4),bottom:RB(4),right:RB(18)}}),
+  ]});
+  const imgPara=new Paragraph({children:[new ImageRun({data:imgBuf,transformation:size})],alignment:AlignmentType.CENTER,spacing:{before:0,after:0}});
+  const rowD=new TableRow({
     height:{value:5840,rule:HeightRule.ATLEAST},
-    children:[tc(TABLE_W,new Paragraph({children:[new ImageRun({data:imgBuf,transformation:imgSize})],alignment:AlignmentType.CENTER,spacing:{before:0,after:0}}),{
-      columnSpan:3,vAlign:VerticalAlign.TOP,
-      borders:{top:B(4),left:B(18),bottom:NIL,right:B(18)},
-    })],
-  }));
-  // Row E: separator (only between photos)
-  if(!isLast){
-    rows.push(new TableRow({children:[
-      tc(TABLE_W,p(""),{columnSpan:3,borders:{top:B(18),left:NIL,bottom:B(18),right:NIL}}),
-    ]}));
-  }
-  return rows;
+    children:[tc(TABLE_W,imgPara,{columnSpan:3,vAlign:VerticalAlign.TOP,borders:{top:RB(4),left:RB(18),bottom:NIL_B,right:RB(18)}})],
+  });
+  return[rowA,rowB,rowC,rowD];
+}
+
+// ── Outer row: one photo block wrapped in cantSplit outer row ────────
+function makeBlockOuterRow(numStr,imgBuf,size){
+  const innerTbl=new Table({
+    width:{size:TABLE_W,type:WidthType.DXA},
+    rows:makeInnerRows(numStr,imgBuf,size),
+    borders:{top:NIL_B,bottom:NIL_B,left:NIL_B,right:NIL_B,insideH:NIL_B,insideV:NIL_B},
+  });
+  return new TableRow({cantSplit:true,children:[
+    new TableCell({width:{size:TABLE_W,type:WidthType.DXA},
+      borders:{top:NIL_B,bottom:NIL_B,left:NIL_B,right:NIL_B},
+      children:[innerTbl]}),
+  ]});
+}
+
+// ── Separator outer row (between blocks on same page) ────────────────
+function makeSepOuterRow(){
+  return new TableRow({children:[
+    new TableCell({width:{size:TABLE_W,type:WidthType.DXA},
+      borders:{top:RB(18),bottom:RB(18),left:NIL_B,right:NIL_B},
+      children:[p("")]}),
+  ]});
 }
 
 async function generateDoc(photos,addr1,addr2){
   const bodyChildren=[];
-  const location=`${addr1}${addr2}號`;
   for(let page=0;page*2<photos.length;page++){
     const pagePhs=photos.slice(page*2,page*2+2);
     bodyChildren.push(new Paragraph({
@@ -180,18 +187,19 @@ async function generateDoc(photos,addr1,addr2){
       pageBreakBefore:page>0,
       spacing:{before:0,after:0,line:240,lineRule:"auto"},
     }));
-    const allRows=[];
+    const outerRows=[];
     for(let i=0;i<pagePhs.length;i++){
       const ph=pagePhs[i];
       const dims=await getImgDims(ph.buf,ph.type);
       const size=calcSize(dims.w,dims.h);
       const ns="照片"+String(ph.num).padStart(2,"0");
-      const rows=makePhotoRows(ns,ph.buf,size,i===pagePhs.length-1,location);
-      rows.forEach(r=>allRows.push(r));
+      outerRows.push(makeBlockOuterRow(ns,ph.buf,size));
+      if(i<pagePhs.length-1) outerRows.push(makeSepOuterRow());
     }
     bodyChildren.push(new Table({
       width:{size:TABLE_W,type:WidthType.DXA},
-      rows:allRows,
+      rows:outerRows,
+      borders:{top:NIL_B,bottom:NIL_B,left:NIL_B,right:NIL_B,insideH:NIL_B,insideV:NIL_B},
     }));
   }
   const doc=new Document({sections:[{

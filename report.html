@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>工具2：Word 鑑定報告產出</title>
-<script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@9/dist/index.iife.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -103,9 +103,10 @@ function getImgDims(buf,type){
   });
 }
 function calcSize(w,h){
+  // Scale to full table width; if height exceeds 9cm, constrain by height
   let fw=IMG_MAX_W,fh=Math.round(fw*h/w);
   if(fh>IMG_MAX_H){fh=IMG_MAX_H;fw=Math.round(fh*w/h);}
-  return{width:fw,height:fh};
+  return{width:Math.min(fw,IMG_MAX_W),height:fh};
 }
 
 // ── DOCX helpers ─────────────────────────────────────────────────────
@@ -129,28 +130,30 @@ function tc(w,children,opts={}){
 }
 
 // ── Photo block rows (4 or 5 rows per photo) ────────────────────────
-function makePhotoRows(numStr,imgBuf,imgSize,isLast){
+function makePhotoRows(numStr,imgBuf,imgSize,isLast,locationText){
   const rows=[];
-  // Row A: 編號 | 說明(RESTART) | A
-  rows.push(new TableRow({children:[
+  const col3text=locationText?p(locationText):p([t("A",{color:BLUE})],AlignmentType.CENTER);
+  // Row A: 編號 | 說明(RESTART) | A or location
+  rows.push(new TableRow({cantSplit:true,children:[
     tc(COL1,p("編\u3000號",AlignmentType.CENTER),{borders:{top:B(18),left:B(18),bottom:B(4),right:B(4)}}),
     tc(COL2,p("說\u3000\u3000\u3000明",AlignmentType.CENTER),{vMerge:VerticalMergeType.RESTART,vAlign:VerticalAlign.CENTER,borders:{top:B(18),left:B(4),bottom:B(4),right:B(4)}}),
-    tc(COL3,p([t("A",{color:BLUE})],AlignmentType.CENTER),{borders:{top:B(18),left:B(4),bottom:B(4),right:B(18)}}),
+    tc(COL3,col3text,{borders:{top:B(18),left:B(4),bottom:B(4),right:B(18)}}),
   ]}));
   // Row B: numStr(RESTART) | CONTINUE | 詳建物
-  rows.push(new TableRow({children:[
+  rows.push(new TableRow({cantSplit:true,children:[
     tc(COL1,p([t(numStr,{color:BLUE})],AlignmentType.CENTER),{vMerge:VerticalMergeType.RESTART,vAlign:VerticalAlign.CENTER,borders:{top:B(4),left:B(18),bottom:B(4),right:B(4)}}),
     tc(COL2,p(""),{vMerge:VerticalMergeType.CONTINUE,borders:{top:B(18),left:B(4),bottom:B(4),right:B(4)}}),
     tc(COL3,p("詳建物現況調查紀錄表"),{borders:{top:B(4),left:B(4),bottom:B(4),right:B(18)}}),
   ]}));
   // Row C: CONTINUE | CONTINUE | empty
-  rows.push(new TableRow({children:[
+  rows.push(new TableRow({cantSplit:true,children:[
     tc(COL1,p(""),{vMerge:VerticalMergeType.CONTINUE,borders:{top:B(4),left:B(18),bottom:B(4),right:B(4)}}),
     tc(COL2,p(""),{vMerge:VerticalMergeType.CONTINUE,borders:{top:B(18),left:B(4),bottom:B(4),right:B(4)}}),
     tc(COL3,p(""),{borders:{top:B(4),left:B(4),bottom:B(4),right:B(18)}}),
   ]}));
   // Row D: full-width photo (columnSpan=3)
   rows.push(new TableRow({
+    cantSplit:true,
     height:{value:5840,rule:HeightRule.ATLEAST},
     children:[tc(TABLE_W,new Paragraph({children:[new ImageRun({data:imgBuf,transformation:imgSize})],alignment:AlignmentType.CENTER,spacing:{before:0,after:0}}),{
       columnSpan:3,vAlign:VerticalAlign.TOP,
@@ -166,26 +169,28 @@ function makePhotoRows(numStr,imgBuf,imgSize,isLast){
   return rows;
 }
 
-async function generateDoc(photos){
+async function generateDoc(photos,addr1,addr2){
   const bodyChildren=[];
+  let globalIdx=0; // photo index across all pages (for location text on first photo only)
   for(let page=0;page*2<photos.length;page++){
     const pagePhs=photos.slice(page*2,page*2+2);
-    // Title paragraph
     bodyChildren.push(new Paragraph({
       children:[t(TITLE,{bold:true})],
       alignment:AlignmentType.CENTER,
       pageBreakBefore:page>0,
       spacing:{before:0,after:0,line:240,lineRule:"auto"},
     }));
-    // Table for this page
     const allRows=[];
     for(let i=0;i<pagePhs.length;i++){
       const ph=pagePhs[i];
       const dims=await getImgDims(ph.buf,ph.type);
       const size=calcSize(dims.w,dims.h);
       const ns="照片"+String(ph.num).padStart(2,"0");
-      const rows=makePhotoRows(ns,ph.buf,size,i===pagePhs.length-1);
+      // First photo block: put full address in Col3; rest: "A"
+      const loc=globalIdx===0?`${addr1}${addr2}號`:null;
+      const rows=makePhotoRows(ns,ph.buf,size,i===pagePhs.length-1,loc);
       rows.forEach(r=>allRows.push(r));
+      globalIdx++;
     }
     bodyChildren.push(new Table({
       width:{size:TABLE_W,type:WidthType.DXA},
@@ -245,7 +250,7 @@ document.getElementById("gen-btn").addEventListener("click",async()=>{
       photos.push({buf:await f.arrayBuffer(),type:f.type||"image/jpeg",num:i+1});
     }
     document.getElementById("gp").style.width="100%";
-    const blob=await generateDoc(photos);
+    const blob=await generateDoc(photos,addr1,addr2);
     saveAs(blob,`${addr2}_貼照片.docx`);
     addSt(`✅ Word 已下載：${addr2}_貼照片.docx`,"success");
   }catch(e){

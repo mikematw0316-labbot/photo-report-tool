@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>工具2：Word 鑑定報告產出</title>
-<script src="https://cdn.jsdelivr.net/npm/docx@9/dist/index.iife.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -18,10 +18,13 @@ h1{font-size:1.4rem;font-weight:700;color:#1a1a2e;margin-bottom:4px}
 .field label{display:block;font-size:.85rem;color:#555;margin-bottom:6px;font-weight:600}
 .field input{width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:.9rem;font-family:inherit}
 .field input:focus{outline:none;border-color:#1976d2}
+.tmpl-box{border:2px dashed #e0a000;border-radius:10px;padding:20px 16px;text-align:center;background:#fffbe6;cursor:pointer;transition:.2s;margin-bottom:12px}
+.tmpl-box.ok{border-color:#388e3c;background:#e8f5e9}
+.tmpl-box p{color:#666;font-size:.88rem}
 #upload-area{border:2px dashed #aaa;border-radius:10px;padding:32px 16px;text-align:center;background:#fafafa;cursor:pointer;transition:.2s}
 #upload-area.drag{border-color:#1976d2;background:#e3f2fd}
 #upload-area p{color:#555;font-size:.9rem;margin-bottom:6px}
-#file-input{display:none}
+#file-input,#tmpl-input{display:none}
 .file-list{max-height:200px;overflow-y:auto;margin-top:10px;border:1px solid #eee;border-radius:6px}
 .file-item{padding:6px 12px;font-size:.8rem;color:#555;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between}
 .file-item:last-child{border-bottom:none}
@@ -41,10 +44,18 @@ h1{font-size:1.4rem;font-weight:700;color:#1a1a2e;margin-bottom:4px}
 <body>
 <a class="back" href="index.html">← 返回首頁</a>
 <h1>📄 工具2：Word 鑑定報告產出</h1>
-<p class="subtitle">上傳同一地址的現況照片 → 自動產出紅框表格 Word 鑑定報告</p>
+<p class="subtitle">以空白範本為基底，插入照片，產出格式完全相符的 Word 鑑定報告</p>
 
 <div class="section">
-  <h2>① 地址資訊</h2>
+  <h2>① 上傳空白範本</h2>
+  <div class="tmpl-box" id="tmpl-box" onclick="document.getElementById('tmpl-input').click()">
+    <p id="tmpl-label">📂 點擊選取「貼照片_空檔案.docx」</p>
+    <input type="file" id="tmpl-input" accept=".docx">
+  </div>
+</div>
+
+<div class="section">
+  <h2>② 地址資訊（僅用於檔名）</h2>
   <div class="field">
     <label>第一層：縣市 + 鄉鎮市區 + 路/街/段</label>
     <input type="text" id="addr1" placeholder="例：宜蘭縣頭城鎮大里路">
@@ -56,7 +67,7 @@ h1{font-size:1.4rem;font-weight:700;color:#1a1a2e;margin-bottom:4px}
 </div>
 
 <div class="section">
-  <h2>② 上傳該地址照片（可多張，依序號排列）</h2>
+  <h2>③ 上傳該地址照片（依序排列）</h2>
   <div id="upload-area" onclick="document.getElementById('file-input').click()">
     <p>📁 拖曳照片至此，或點擊選取</p>
     <p style="font-size:.78rem;color:#999">建議檔名包含「照片1」「照片2」…以便自動排序</p>
@@ -66,34 +77,23 @@ h1{font-size:1.4rem;font-weight:700;color:#1a1a2e;margin-bottom:4px}
 </div>
 
 <div class="section">
-  <h2>③ 產出 Word</h2>
-  <p class="note">
-    格式：標題〔新北市工程技術顧問商業同業公會　鑑定報告書現況照片〕標楷體 18pt<br>
-    每張照片：紅框3列表格｜編號｜說明｜A（藍字）｜照片高9cm置中<br>
-    每頁2張、不跨頁，每個地址獨立一份 Word
-  </p>
+  <h2>④ 產出 Word</h2>
+  <p class="note">以空白 DOCX 的 OOXML 套件為基底，保留樣式、字型、框線、欄寬等設定，插入照片後輸出。</p>
   <div id="status-wrap"></div>
   <button class="btn btn-primary" id="gen-btn" disabled>⚙ 產出 Word 並下載</button>
 </div>
 
 <script>
-const TITLE="新北市工程技術顧問商業同業公會\u3000鑑定報告書現況照片";
-const FONT="DFKai-SB"; const FS=36; const BLUE="0000FF"; const TR="FF0000";
-// Page margins matching example (narrow)
-const MAR_L=1701,MAR_R=926,MAR_T=539,MAR_B=680;
-// Column widths matching example exactly (twips)
-const TABLE_W=8789, COL1=947, COL2=1619, COL3=6223;
-// Image: 1px = 9525 EMU (96 DPI); 9cm = 340px; table width ≈ 572px
-const IMG_MAX_H=Math.round(9/2.54*96); // 340
-const IMG_MAX_W=Math.round((TABLE_W-200)/1440*96); // ~572
+// ── Image sizing ─────────────────────────────────────────────────────
+const PX_TO_EMU=9525;
+const IMG_MAX_H_PX=Math.round(9/2.54*96);   // 340px = 9cm
+const IMG_MAX_W_PX=Math.round((8789-200)/1440*96); // ~572px
 
-const {Document,Table,TableRow,TableCell,Paragraph,TextRun,ImageRun,
-       AlignmentType,BorderStyle,WidthType,VerticalAlign,VerticalMergeType,HeightRule,Packer}=docx;
+function calcSize(w,h){
+  const scale=Math.min(IMG_MAX_W_PX/w, IMG_MAX_H_PX/h);
+  return{emu_w:Math.round(w*scale*PX_TO_EMU), emu_h:Math.round(h*scale*PX_TO_EMU)};
+}
 
-let uploadedFiles=[];
-
-// ── 圖片 ─────────────────────────────────────────────────────────────
-function extractNum(name){const m=name.match(/照片\s*0*(\d+)/);return m?parseInt(m[1],10):999;}
 function getImgDims(buf,type){
   return new Promise(r=>{
     const b=new Blob([buf],{type}),url=URL.createObjectURL(b),img=new Image();
@@ -102,167 +102,236 @@ function getImgDims(buf,type){
     img.src=url;
   });
 }
-// ── Contain-fit scaling: one scale for both dimensions ───────────────
-function calcSize(w,h){
-  const scale=Math.min(IMG_MAX_W/w, IMG_MAX_H/h);
-  return{width:Math.round(w*scale), height:Math.round(h*scale)};
+
+// ── XML helpers ──────────────────────────────────────────────────────
+const W_NS='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+function findWChildren(el,localName){
+  const r=[];
+  for(const c of el.childNodes) if(c.nodeType===1&&c.localName===localName&&c.namespaceURI===W_NS) r.push(c);
+  return r;
 }
 
-// ── DOCX helpers ─────────────────────────────────────────────────────
-function RB(sz){return{style:BorderStyle.SINGLE,size:sz,color:TR};}
-const NIL_B={style:BorderStyle.NIL,size:0,color:"000000"};
-function t(text,opts={}){return new TextRun({text,font:FONT,size:FS,...opts});}
-function p(ch,align=AlignmentType.LEFT){
-  const arr=typeof ch==="string"?[t(ch)]:(Array.isArray(ch)?ch:[ch]);
-  return new Paragraph({children:arr,alignment:align,spacing:{before:0,after:0}});
-}
-function tc(w,children,opts={}){
-  const{vMerge,vAlign,borders,columnSpan}=opts;
-  const arr=Array.isArray(children)?children:[children];
-  return new TableCell({
-    width:{size:w,type:WidthType.DXA},borders,
-    ...(vMerge?{verticalMerge:vMerge}:{}),
-    ...(vAlign?{verticalAlign:vAlign}:{}),
-    ...(columnSpan?{columnSpan}:{}),
-    children:arr,
-  });
+function allText(el){
+  let t='';
+  for(const c of el.childNodes) t+=c.nodeType===3?c.nodeValue:allText(c);
+  return t;
 }
 
-// ── Inner photo-block rows (A, B, C, D) ─────────────────────────────
-function makeInnerRows(numStr,imgBuf,size){
-  const blueA=p([t("A",{color:BLUE})],AlignmentType.CENTER);
-  const rowA=new TableRow({children:[
-    tc(COL1,p("編\u3000號",AlignmentType.CENTER),{borders:{top:RB(18),left:RB(18),bottom:RB(4),right:RB(4)}}),
-    tc(COL2,p("說\u3000\u3000\u3000明",AlignmentType.CENTER),{vMerge:VerticalMergeType.RESTART,vAlign:VerticalAlign.CENTER,borders:{top:RB(18),left:RB(4),bottom:RB(4),right:RB(4)}}),
-    tc(COL3,blueA,{borders:{top:RB(18),left:RB(4),bottom:RB(4),right:RB(18)}}),
-  ]});
-  const rowB=new TableRow({children:[
-    tc(COL1,p([t(numStr,{color:BLUE})],AlignmentType.CENTER),{vMerge:VerticalMergeType.RESTART,vAlign:VerticalAlign.CENTER,borders:{top:RB(4),left:RB(18),bottom:RB(4),right:RB(4)}}),
-    tc(COL2,p(""),{vMerge:VerticalMergeType.CONTINUE,borders:{top:RB(18),left:RB(4),bottom:RB(4),right:RB(4)}}),
-    tc(COL3,p("詳建物現況調查紀錄表"),{borders:{top:RB(4),left:RB(4),bottom:RB(4),right:RB(18)}}),
-  ]});
-  const rowC=new TableRow({children:[
-    tc(COL1,p(""),{vMerge:VerticalMergeType.CONTINUE,borders:{top:RB(4),left:RB(18),bottom:RB(4),right:RB(4)}}),
-    tc(COL2,p(""),{vMerge:VerticalMergeType.CONTINUE,borders:{top:RB(18),left:RB(4),bottom:RB(4),right:RB(4)}}),
-    tc(COL3,p(""),{borders:{top:RB(4),left:RB(4),bottom:RB(4),right:RB(18)}}),
-  ]});
-  const imgPara=new Paragraph({children:[new ImageRun({data:imgBuf,transformation:size})],alignment:AlignmentType.CENTER,spacing:{before:0,after:0}});
-  const rowD=new TableRow({
-    height:{value:5840,rule:HeightRule.ATLEAST},
-    children:[tc(TABLE_W,imgPara,{columnSpan:3,vAlign:VerticalAlign.TOP,borders:{top:RB(4),left:RB(18),bottom:NIL_B,right:RB(18)}})],
-  });
-  return[rowA,rowB,rowC,rowD];
+function makeImageXml(rId,imgId,size){
+  return `<w:r xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:drawing>`+
+    `<wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">`+
+    `<wp:extent cx="${size.emu_w}" cy="${size.emu_h}"/>`+
+    `<wp:effectExtent l="0" t="0" r="0" b="0"/>`+
+    `<wp:docPr id="${imgId}" name="Image${imgId}"/>`+
+    `<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>`+
+    `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">`+
+    `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">`+
+    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">`+
+    `<pic:nvPicPr><pic:cNvPr id="${imgId}" name="Image${imgId}"/><pic:cNvPicPr/></pic:nvPicPr>`+
+    `<pic:blipFill>`+
+    `<a:blip r:embed="${rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>`+
+    `<a:stretch><a:fillRect/></a:stretch>`+
+    `</pic:blipFill>`+
+    `<pic:spPr>`+
+    `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${size.emu_w}" cy="${size.emu_h}"/></a:xfrm>`+
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`+
+    `</pic:spPr>`+
+    `</pic:pic></a:graphicData></a:graphic>`+
+    `</wp:inline></w:drawing></w:r>`;
 }
 
-// ── Outer row: one photo block wrapped in cantSplit outer row ────────
-function makeBlockOuterRow(numStr,imgBuf,size){
-  const innerTbl=new Table({
-    width:{size:TABLE_W,type:WidthType.DXA},
-    rows:makeInnerRows(numStr,imgBuf,size),
-    borders:{top:NIL_B,bottom:NIL_B,left:NIL_B,right:NIL_B,insideH:NIL_B,insideV:NIL_B},
-  });
-  return new TableRow({cantSplit:true,children:[
-    new TableCell({width:{size:TABLE_W,type:WidthType.DXA},
-      borders:{top:NIL_B,bottom:NIL_B,left:NIL_B,right:NIL_B},
-      children:[innerTbl]}),
-  ]});
-}
+// ── Core: JSZip-based template manipulation ──────────────────────────
+async function generateDoc(templateBuf, photos, addr1, addr2){
+  const zip=await JSZip.loadAsync(templateBuf);
 
-// ── Separator outer row (between blocks on same page) ────────────────
-function makeSepOuterRow(){
-  return new TableRow({children:[
-    new TableCell({width:{size:TABLE_W,type:WidthType.DXA},
-      borders:{top:RB(18),bottom:RB(18),left:NIL_B,right:NIL_B},
-      children:[p("")]}),
-  ]});
-}
+  const docXmlStr=await zip.file('word/document.xml').async('string');
+  const relsXmlStr=await zip.file('word/_rels/document.xml.rels').async('string');
 
-async function generateDoc(photos,addr1,addr2){
-  const bodyChildren=[];
-  for(let page=0;page*2<photos.length;page++){
-    const pagePhs=photos.slice(page*2,page*2+2);
-    bodyChildren.push(new Paragraph({
-      children:[t(TITLE,{bold:true})],
-      alignment:AlignmentType.CENTER,
-      pageBreakBefore:page>0,
-      spacing:{before:0,after:0,line:240,lineRule:"auto"},
-    }));
-    const outerRows=[];
-    for(let i=0;i<pagePhs.length;i++){
-      const ph=pagePhs[i];
-      const dims=await getImgDims(ph.buf,ph.type);
-      const size=calcSize(dims.w,dims.h);
-      const ns="照片"+String(ph.num).padStart(2,"0");
-      outerRows.push(makeBlockOuterRow(ns,ph.buf,size));
-      if(i<pagePhs.length-1) outerRows.push(makeSepOuterRow());
+  const parser=new DOMParser();
+  const serializer=new XMLSerializer();
+
+  const docDom=parser.parseFromString(docXmlStr,'application/xml');
+  const relsDom=parser.parseFromString(relsXmlStr,'application/xml');
+
+  const body=docDom.getElementsByTagNameNS(W_NS,'body')[0];
+  const sectPr=docDom.getElementsByTagNameNS(W_NS,'sectPr')[0];
+
+  // Collect (title, table) pairs from template
+  const pagePairs=[];
+  const bodyKids=Array.from(body.childNodes).filter(n=>n.nodeType===1);
+  for(let i=0;i<bodyKids.length;i++){
+    const el=bodyKids[i];
+    if(el.localName==='p'&&allText(el).includes('新北市')){
+      const next=bodyKids[i+1];
+      if(next&&next.localName==='tbl') pagePairs.push({title:el,table:next});
     }
-    bodyChildren.push(new Table({
-      width:{size:TABLE_W,type:WidthType.DXA},
-      rows:outerRows,
-      borders:{top:NIL_B,bottom:NIL_B,left:NIL_B,right:NIL_B,insideH:NIL_B,insideV:NIL_B},
-    }));
   }
-  const doc=new Document({sections:[{
-    properties:{page:{size:{width:11906,height:16838},margin:{top:MAR_T,right:MAR_R,bottom:MAR_B,left:MAR_L}}},
-    children:bodyChildren,
-  }]});
-  return Packer.toBlob(doc);
+
+  if(!pagePairs.length) throw new Error('範本結構無法識別，請確認為正確的空白範本');
+
+  // Build new body
+  while(body.firstChild) body.removeChild(body.firstChild);
+
+  let photoIndex=0, rIdBase=7;
+  const imageRelEntries=[];
+
+  const numPages=Math.ceil(photos.length/2);
+  for(let page=0;page<numPages;page++){
+    const pair=pagePairs[page%pagePairs.length];
+
+    // Clone title, add pageBreak if needed
+    const titleClone=pair.title.cloneNode(true);
+    if(page>0){
+      let pPr=findWChildren(titleClone,'pPr')[0];
+      if(!pPr){pPr=docDom.createElementNS(W_NS,'w:pPr');titleClone.insertBefore(pPr,titleClone.firstChild);}
+      pPr.insertBefore(docDom.createElementNS(W_NS,'w:pageBreakBefore'),pPr.firstChild);
+    }
+    body.appendChild(titleClone);
+
+    // Clone table
+    const tableClone=pair.table.cloneNode(true);
+    const allRows=findWChildren(tableClone,'tr');
+    // rows 0-3: block 1, row 4: separator, rows 5-8: block 2
+    const photoRow1=allRows[3], photoRow2=allRows.length>8?allRows[8]:null;
+
+    // Insert photo into slot 1
+    const ph1=photos[photoIndex++];
+    {
+      const size=calcSize(ph1.w,ph1.h);
+      const rId=`rImg${rIdBase}`;
+      const imgId=rIdBase++;
+      const mediaName=`image${imgId}.jpg`;
+      const photoCell=photoRow1.getElementsByTagNameNS(W_NS,'tc')[0];
+      const photoPara=photoCell.getElementsByTagNameNS(W_NS,'p')[0];
+      // Remove existing runs
+      Array.from(photoPara.childNodes).filter(n=>n.localName==='r').forEach(r=>photoPara.removeChild(r));
+      // Insert image run
+      const frag=parser.parseFromString(
+        `<root xmlns:w="${W_NS}">${makeImageXml(rId,imgId,size)}</root>`,'application/xml');
+      photoPara.appendChild(docDom.importNode(frag.documentElement.firstChild,true));
+      zip.file(`word/media/${mediaName}`,ph1.buf);
+      imageRelEntries.push({id:rId,target:`../media/${mediaName}`});
+    }
+
+    // Insert photo into slot 2 or remove it
+    if(photoIndex<photos.length&&photoRow2){
+      const ph2=photos[photoIndex++];
+      const size=calcSize(ph2.w,ph2.h);
+      const rId=`rImg${rIdBase}`;
+      const imgId=rIdBase++;
+      const mediaName=`image${imgId}.jpg`;
+      const photoCell=photoRow2.getElementsByTagNameNS(W_NS,'tc')[0];
+      const photoPara=photoCell.getElementsByTagNameNS(W_NS,'p')[0];
+      Array.from(photoPara.childNodes).filter(n=>n.localName==='r').forEach(r=>photoPara.removeChild(r));
+      const frag=parser.parseFromString(
+        `<root xmlns:w="${W_NS}">${makeImageXml(rId,imgId,size)}</root>`,'application/xml');
+      photoPara.appendChild(docDom.importNode(frag.documentElement.firstChild,true));
+      zip.file(`word/media/${mediaName}`,ph2.buf);
+      imageRelEntries.push({id:rId,target:`../media/${mediaName}`});
+    } else if(photoRow2){
+      // Odd last page: remove separator + second block (rows 4-8)
+      const rows=findWChildren(tableClone,'tr');
+      for(let r=4;r<rows.length;r++) tableClone.removeChild(rows[r]);
+    }
+
+    body.appendChild(tableClone);
+  }
+
+  body.appendChild(sectPr.cloneNode(true));
+
+  // Add image relationships
+  const REL_NS='http://schemas.openxmlformats.org/package/2006/relationships';
+  const IMG_TYPE='http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+  for(const e of imageRelEntries){
+    const rel=relsDom.createElementNS(REL_NS,'Relationship');
+    rel.setAttribute('Id',e.id);rel.setAttribute('Type',IMG_TYPE);rel.setAttribute('Target',e.target);
+    relsDom.documentElement.appendChild(rel);
+  }
+
+  zip.file('word/document.xml',serializer.serializeToString(docDom));
+  zip.file('word/_rels/document.xml.rels',serializer.serializeToString(relsDom));
+
+  return zip.generateAsync({type:'blob',compression:'DEFLATE'});
 }
 
-// ── UI ──────────────────────────────────────────────────────────────
+// ── State & UI ───────────────────────────────────────────────────────
+let uploadedFiles=[], templateBuf=null;
+
+function extractNum(name){const m=name.match(/照片\s*0*(\d+)/);return m?parseInt(m[1],10):999;}
+
 function addSt(msg,type="processing"){
-  const w=document.getElementById("status-wrap");
-  w.innerHTML=`<div class="status-box ${type}">${msg}</div>`;
+  document.getElementById('status-wrap').innerHTML=`<div class="status-box ${type}">${msg}</div>`;
+}
+
+function checkReady(){
+  document.getElementById('gen-btn').disabled=!(templateBuf&&uploadedFiles.length&&
+    document.getElementById('addr1').value.trim()&&document.getElementById('addr2').value.trim());
 }
 
 function updateFileList(){
-  const fl=document.getElementById("file-list");
-  if(!uploadedFiles.length){fl.style.display="none";return;}
-  fl.style.display="block";
-  fl.innerHTML=uploadedFiles.map((f,i)=>`<div class="file-item"><span>照片${String(i+1).padStart(2,"0")} — ${f.name}</span><span style="color:#aaa">${(f.size/1024).toFixed(0)}KB</span></div>`).join("");
-  document.getElementById("gen-btn").disabled=false;
+  const fl=document.getElementById('file-list');
+  if(!uploadedFiles.length){fl.style.display='none';return;}
+  fl.style.display='block';
+  fl.innerHTML=uploadedFiles.map((f,i)=>`<div class="file-item"><span>照片${String(i+1).padStart(2,'0')} — ${f.name}</span><span style="color:#aaa">${(f.size/1024).toFixed(0)}KB</span></div>`).join('');
+  checkReady();
 }
 
-const ua=document.getElementById("upload-area");
-const fi=document.getElementById("file-input");
-ua.addEventListener("dragover",e=>{e.preventDefault();ua.classList.add("drag")});
-ua.addEventListener("dragleave",()=>ua.classList.remove("drag"));
-ua.addEventListener("drop",e=>{e.preventDefault();ua.classList.remove("drag");handleFiles([...e.dataTransfer.files])});
-fi.addEventListener("change",e=>handleFiles([...e.target.files]));
+// Template upload
+document.getElementById('tmpl-input').addEventListener('change',async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  templateBuf=await f.arrayBuffer();
+  document.getElementById('tmpl-label').textContent=`✅ 範本已載入：${f.name}`;
+  document.getElementById('tmpl-box').classList.add('ok');
+  checkReady();
+});
+
+// Photo upload
+const ua=document.getElementById('upload-area');
+const fi=document.getElementById('file-input');
+ua.addEventListener('dragover',e=>{e.preventDefault();ua.classList.add('drag')});
+ua.addEventListener('dragleave',()=>ua.classList.remove('drag'));
+ua.addEventListener('drop',e=>{e.preventDefault();ua.classList.remove('drag');handleFiles([...e.dataTransfer.files])});
+fi.addEventListener('change',e=>handleFiles([...e.target.files]));
+document.getElementById('addr1').addEventListener('input',checkReady);
+document.getElementById('addr2').addEventListener('input',checkReady);
 
 function handleFiles(files){
   const imgs=files.filter(f=>/image/i.test(f.type)||/\.(jpg|jpeg|png|gif|webp)$/i.test(f.name));
-  // Sort by embedded photo number
   imgs.sort((a,b)=>extractNum(a.name)-extractNum(b.name));
-  uploadedFiles=imgs;
-  updateFileList();
+  uploadedFiles=imgs; updateFileList();
 }
 
-document.getElementById("gen-btn").addEventListener("click",async()=>{
-  const addr1=document.getElementById("addr1").value.trim();
-  const addr2=document.getElementById("addr2").value.trim();
-  if(!addr1||!addr2){addSt("⚠️ 請填寫地址資訊","error");return;}
-  if(!uploadedFiles.length){addSt("⚠️ 請先上傳照片","error");return;}
+// Generate
+document.getElementById('gen-btn').addEventListener('click',async()=>{
+  const addr1=document.getElementById('addr1').value.trim();
+  const addr2=document.getElementById('addr2').value.trim();
+  if(!templateBuf){addSt('⚠️ 請先上傳空白範本','error');return;}
+  if(!uploadedFiles.length){addSt('⚠️ 請先上傳照片','error');return;}
+  if(!addr1||!addr2){addSt('⚠️ 請填寫地址資訊','error');return;}
 
-  const btn=document.getElementById("gen-btn"); btn.disabled=true;
+  const btn=document.getElementById('gen-btn'); btn.disabled=true;
   addSt(`<div>⚙ 產出中 (0/${uploadedFiles.length})...</div><div class="progress-bar"><div class="progress-fill" id="gp" style="width:0%"></div></div>`);
 
   try{
     const photos=[];
     for(let i=0;i<uploadedFiles.length;i++){
-      document.getElementById("gp").style.width=`${Math.round(i/uploadedFiles.length*100)}%`;
+      document.getElementById('gp').style.width=`${Math.round(i/uploadedFiles.length*100)}%`;
       const f=uploadedFiles[i];
-      photos.push({buf:await f.arrayBuffer(),type:f.type||"image/jpeg",num:i+1});
+      const buf=await f.arrayBuffer();
+      const dims=await getImgDims(buf,f.type||'image/jpeg');
+      photos.push({buf,w:dims.w,h:dims.h});
     }
-    document.getElementById("gp").style.width="100%";
-    const blob=await generateDoc(photos,addr1,addr2);
-    saveAs(blob,`${addr1}${addr2}號_貼照片.docx`);
-    addSt(`✅ Word 已下載：${addr1}${addr2}號_貼照片.docx`,"success");
+    document.getElementById('gp').style.width='100%';
+    const blob=await generateDoc(templateBuf,photos,addr1,addr2);
+    const fname=`${addr1}${addr2}號_貼照片.docx`;
+    saveAs(blob,fname);
+    addSt(`✅ Word 已下載：${fname}`,'success');
   }catch(e){
-    addSt("❌ 產出失敗："+e.message,"error");
+    addSt('❌ 產出失敗：'+e.message,'error');
     console.error(e);
   }finally{
-    btn.disabled=false;
+    btn.disabled=false;checkReady();
   }
 });
 </script>
